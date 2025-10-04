@@ -1,0 +1,114 @@
+# Model Configuration for Cement Leaching Prediction
+
+# Data processing settings
+data:
+  test_size: 0.2
+  random_state: 42
+  stratify_by: "Material"
+  
+# Feature engineering settings
+features:
+  include_interactions: true
+  include_polynomial: true
+  include_normalized: true
+  include_domain_specific: true
+  
+# Model hyperparameters
+models:
+  xgboost:
+    n_estimators: 400
+    max_depth: 8
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+    n_jobs: -1
+    
+  lightgbm:
+    n_estimators: 400
+    max_depth: 8
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+    n_jobs: -1
+    verbose: -1
+    
+  random_forest:
+    n_estimators: 300
+    max_depth: 15
+    min_samples_split: 5
+    min_samples_leaf: 2
+    random_state: 42
+    n_jobs: -1
+    
+  extra_trees:
+    n_estimators: 300
+    max_depth: 15
+    min_samples_split: 5
+    min_samples_leaf: 2
+    random_state: 42
+    n_jobs: -1
+    
+  gradient_boosting:
+    n_estimators: 300
+    max_depth: 8
+    learning_rate: 0.05
+    subsample: 0.8
+    random_state: 42
+    
+  neural_network:
+    hidden_layer_sizes: [150, 100, 50]
+    activation: "relu"
+    solver: "adam"
+    alpha: 0.01
+    learning_rate: "adaptive"
+    max_iter: 1000
+    random_state: 42
+    
+  elastic_net:
+    alpha: 0.1
+    l1_ratio: 0.5
+    random_state: 42
+
+# Cross-validation settings
+cross_validation:
+  cv_folds: 5
+  scoring: "r2"
+  
+# Ensemble settings
+ensemble:
+  top_n_models: 3
+  voting_strategy: "hard"
+  
+# Prediction settings
+prediction:
+  confidence_thresholds:
+    high: 100
+    medium: 500
+  default_values:
+    cement_content: 80
+    additives_count: 1
+    
+# Material grouping for domain-specific features
+material_groups:
+  light_metals: ["Al", "Fe", "Si"]
+  toxic_heavy: ["As", "Cr", "Mo"]
+  alkaline_earth: ["Ba", "P"]
+  halogens: ["Br", "F", "Cl"]
+  alkali_metals: ["Ca", "K", "Mg", "Na"]
+  heavy_metals: ["Cd", "Cu", "Pb", "Zn"]
+  sulfates: ["SO4"]
+
+# File paths
+paths:
+  data_file: "LXS-Monolithe-21.xlsx"
+  output_dir: "data/processed"
+  results_dir: "results"
+  models_dir: "models"
+  
+# Logging settings
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/ml_pipeline.log"
