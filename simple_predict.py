@@ -14,7 +14,7 @@ import numpy as np
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from model_serializer import ModelSerializer
+from src.model_serializer import ModelSerializer
 
 # Global variables for loaded model
 _model = None
@@ -24,7 +24,7 @@ _scaler = None
 _feature_columns = None
 
 def load_model_once():
-    """Load model once and cache it globally."""
+    """Load model once and cache it glob ally."""
     global _model, _label_encoders, _power_transformer, _scaler, _feature_columns
     
     if _model is None:
