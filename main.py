@@ -13,11 +13,11 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from data_processing import DataProcessor
-from ml_pipeline import MLPipeline
-from models.conditional_ensemble import ConditionalEnsemble
-from model_serializer import ModelSerializer
-from utils import load_config, print_model_summary, create_prediction_report
+from src.data_processing import DataProcessor
+from src.ml_pipeline import MLPipeline
+from src.models.conditional_ensemble import ConditionalEnsemble
+from src.model_serializer import ModelSerializer
+from src.utils import load_config, print_model_summary, create_prediction_report
 import numpy as np
 
 
