@@ -45,6 +45,14 @@ def load_model():
         print("Please ensure you have trained and saved a model first.")
         return False
 
+# Load model at module level (for production with gunicorn)
+# This will execute when the module is imported
+try:
+    load_model()
+except Exception as e:
+    print(f"⚠️  Could not load model at startup: {e}")
+    print("Model will be loaded on first request.")
+
 def safe_transform(le, val):
     """
     Safely transform a value using a label encoder.
@@ -457,12 +465,19 @@ if __name__ == "__main__":
         print(f"📊 Available materials: {len(model_metadata.get('materials', []))}")
         print(f"🔧 Model type: {model_metadata.get('model_type', 'Unknown')}")
         print("\n🌐 Starting web server...")
-        print("📱 Open your browser and go to: http://localhost:8080")
-        print("🔗 API endpoint: http://localhost:8080/api/predict")
+        
+        # Get configuration from environment variables (for production)
+        port = int(os.environ.get('PORT', 8080))
+        debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+        host = os.environ.get('HOST', '0.0.0.0')
+        
+        print(f"📱 Open your browser and go to: http://localhost:{port}")
+        print(f"🔗 API endpoint: http://localhost:{port}/api/predict")
+        print(f"🔧 Debug mode: {debug}")
         print("\n" + "=" * 50)
         
         # Run the app
-        app.run(debug=True, host='0.0.0.0', port=8080)
+        app.run(debug=debug, host=host, port=port)
     else:
         print("❌ Failed to load model. Please train and save a model first.")
         print("\nTo train a model:")
