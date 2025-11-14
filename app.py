@@ -251,14 +251,14 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>🧪 Cement Leaching Prediction</h1>
+        <h1>Cement Leaching Prediction</h1>
         
         {% if model_loaded %}
         <div class="info">
-            <strong>✅ Model Status:</strong> Ready for predictions<br>
-            <strong>📊 Model Type:</strong> {{ model_metadata.model_type }}<br>
-            <strong>🔧 Features:</strong> {{ model_metadata.feature_count }}<br>
-            <strong>📈 Materials:</strong> {{ model_metadata.materials | length }} supported
+            <strong>Model Status:</strong> Ready for predictions<br>
+            <strong>Model Type:</strong> {{ model_metadata.model_type }}<br>
+            <strong>Features:</strong> {{ model_metadata.feature_count }}<br>
+            <strong>Materials:</strong> {{ model_metadata.materials | length }} supported
         </div>
         
         <form method="POST">
@@ -322,7 +322,7 @@ HTML_TEMPLATE = """
                 </div>
             </div>
             
-            <button type="submit" class="submit-btn">🔮 Predict Leaching</button>
+            <button type="submit" class="submit-btn">Predict Leaching</button>
         </form>
         
         {% if prediction %}
@@ -342,14 +342,14 @@ HTML_TEMPLATE = """
         
         {% else %}
         <div class="error">
-            <strong>❌ Model Not Available</strong><br>
+            <strong>Model Not Available</strong><br>
             Please ensure you have trained and saved a model first.<br>
             Run the training pipeline and save the model using the model serializer.
         </div>
         {% endif %}
         
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #7f8c8d; font-size: 14px;">
-            <p><strong>21-Elements Monolithic Cement Leaching Prediction</strong></p>
+            <p><strong>20-Elements Monolithic Cement Leaching Prediction</strong></p>
             <p>This application uses machine learning to predict elemental leaching from cement materials.</p>
         </div>
     </div>
