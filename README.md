@@ -2,6 +2,12 @@
 
 A machine learning project for predicting elemental leaching behavior from monolithic cement materials under different pH and time conditions.
 
+## 🌐 Live Application
+
+**Try it now:** [https://leaching-prediction.up.railway.app/](https://leaching-prediction.up.railway.app/)
+
+The web application is deployed and ready to use! You can make predictions directly through the web interface or use the REST API.
+
 ## Project Overview
 
 This project analyzes leaching data from 21 different elements (Al, As, Ba, Br, Ca, Cd, Cl, Cr, Cu, F, Fe, K, Mg, Mo, Na, P, Pb, Si, SO4, Zn) in monolithic cement materials. The goal is to predict cumulative release values (mg/m²) based on material properties, pH levels, and time exposure.
@@ -87,10 +93,29 @@ print(f"Predicted leaching: {prediction['predicted_leaching_mg_m2']} mg/m²")
 ```
 
 #### 3. Use REST API
+
+**Local:**
 ```python
 import requests
 
-response = requests.post('http://localhost:5000/api/predict', json={
+response = requests.post('http://localhost:8080/api/predict', json={
+    'material': 'Al',
+    'ph': 12.0,
+    'time_days': 1.0,
+    'cement_type': 'CEM_I',
+    'form_type': 'Concrete',
+    'stat_measure': 'CL_Minus'
+})
+
+result = response.json()
+print(f"Prediction: {result['prediction']} mg/m²")
+```
+
+**Production (Live API):**
+```python
+import requests
+
+response = requests.post('https://leaching-prediction.up.railway.app/api/predict', json={
     'material': 'Al',
     'ph': 12.0,
     'time_days': 1.0,
