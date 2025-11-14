@@ -187,4 +187,7 @@ temp/
 *.backup
 *_backup.*
 ~$*
-Dockerfile.railway-backup
+# Docker files (not needed for Railway deployment)
+Dockerfile*
+docker-compose.yml
+docker-deploy.sh
