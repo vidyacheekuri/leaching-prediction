@@ -10,7 +10,7 @@ The web application is deployed and ready to use! You can make predictions direc
 
 ## Project Overview
 
-This project analyzes leaching data from 21 different elements (Al, As, Ba, Br, Ca, Cd, Cl, Cr, Cu, F, Fe, K, Mg, Mo, Na, P, Pb, Si, SO4, Zn) in monolithic cement materials. The goal is to predict cumulative release values (mg/m²) based on material properties, pH levels, and time exposure.
+This project analyzes leaching data from 20 different elements (Al, As, Ba, Br, Ca, Cd, Cl, Cr, Cu, F, Fe, K, Mg, Mo, Na, P, Pb, Si, SO4, Zn) in monolithic cement materials. The goal is to predict cumulative release values (mg/m²) based on material properties, pH levels, and time exposure.
 
 ## Key Features
 
