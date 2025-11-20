@@ -115,18 +115,17 @@ class DataProcessor:
                         time_valid = pd.notna(time_val) and 0.01 <= time_val <= 100
                         release_valid = pd.notna(cumulative_release) and cumulative_release >= 0
                         
-                        # Additional check: if pH looks like it might be Time (very small values) or Time looks like pH (very large values)
-                        # This helps catch swapped columns
+                        # Check for clearly swapped values (very conservative)
+                        # Only swap if pH is clearly a time value (< 1 day) AND time is clearly a pH value (10-14)
+                        # This catches cases where columns are definitely swapped
+                        if ph_valid and time_valid:
+                            if ph_val < 1.0 and 10 <= time_val <= 14:
+                                # pH is < 1 (impossible for cement) and Time is 10-14 (typical pH range)
+                                # These are clearly swapped
+                                ph_val, time_val = time_val, ph_val
+                                print(f"⚠️  Swapped pH/Time for {material_name} row {data_idx}: pH was {time_val:.2f}, Time was {ph_val:.2f}")
+                        
                         if ph_valid and time_valid and release_valid:
-                            # Check for swapped values (pH < 3 or Time > 50 might indicate swap)
-                            # But allow legitimate low pH values
-                            if ph_val < 3 and time_val > 10:
-                                # Possible swap: pH too low, Time too high
-                                # Try swapping them
-                                if 1 <= time_val <= 14 and 0.01 <= ph_val <= 100:
-                                    # Values are in valid ranges when swapped - likely a swap
-                                    ph_val, time_val = time_val, ph_val
-                            
                             consolidated_data.append({
                                 'Material': material_name,
                                 'Material_Condition': current_material_condition,
