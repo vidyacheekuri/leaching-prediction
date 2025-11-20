@@ -30,7 +30,7 @@ def main():
     config = load_config()
     
     # Initialize data processor
-    excel_file = config.get('paths', {}).get('data_file', 'LXS-Monolithe-21.xlsx')
+    excel_file = config.get('paths', {}).get('data_file', 'data/LXS-Monolithe-21.xlsx')
     processor = DataProcessor(excel_file)
     
     try:

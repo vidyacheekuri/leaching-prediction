@@ -171,15 +171,12 @@ class MLPipeline:
         for name, model in self.models.items():
             print(f"\n🔄 Training {name}...")
 
-            # Use scaled data for NN and Elastic Net
-            if name in ['Neural Network', 'Elastic Net']:
-                model.fit(X_train_scaled, y_train)
-                y_pred_log = model.predict(X_test_scaled)
-                cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5, scoring='r2', n_jobs=-1)
-            else:
-                model.fit(X_train, y_train)
-                y_pred_log = model.predict(X_test)
-                cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='r2', n_jobs=-1)
+            # ALL models should use transformed and scaled data for consistency
+            # Tree-based models (XGBoost, LightGBM, RF, etc.) can handle raw data,
+            # but using scaled data ensures all models are on the same scale
+            model.fit(X_train_scaled, y_train)
+            y_pred_log = model.predict(X_test_scaled)
+            cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5, scoring='r2', n_jobs=-1)
 
             # Transform back to original scale
             y_pred_original = np.expm1(y_pred_log)
@@ -212,13 +209,9 @@ class MLPipeline:
         ensemble_models = [(name, self.models[name]) for name in top_3_models]
         voting_regressor = VotingRegressor(ensemble_models)
 
-        # Train ensemble
-        if any('Neural Network' in name or 'Elastic Net' in name for name, _ in ensemble_models):
-            voting_regressor.fit(X_train_scaled, y_train)
-            y_pred_ensemble_log = voting_regressor.predict(X_test_scaled)
-        else:
-            voting_regressor.fit(X_train, y_train)
-            y_pred_ensemble_log = voting_regressor.predict(X_test)
+        # Train ensemble - all models now use scaled data
+        voting_regressor.fit(X_train_scaled, y_train)
+        y_pred_ensemble_log = voting_regressor.predict(X_test_scaled)
 
         y_pred_ensemble = np.expm1(y_pred_ensemble_log)
 
@@ -327,12 +320,10 @@ class MLPipeline:
             X_pred = pd.DataFrame([features])[self.feature_columns]
 
             # Make prediction
-            if self.best_model_name in ['Neural Network', 'Elastic Net']:
-                X_pred_transformed = self.power_transformer.transform(X_pred)
-                X_pred_scaled = self.scaler.transform(X_pred_transformed)
-                pred_log = self.best_model.predict(X_pred_scaled)[0]
-            else:
-                pred_log = self.best_model.predict(X_pred)[0]
+            # ALL models were trained on transformed and scaled data, so we must apply the same transformations
+            X_pred_transformed = self.power_transformer.transform(X_pred)
+            X_pred_scaled = self.scaler.transform(X_pred_transformed)
+            pred_log = self.best_model.predict(X_pred_scaled)[0]
 
             # Transform back to original scale
             prediction = np.expm1(pred_log)
