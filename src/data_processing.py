@@ -109,7 +109,24 @@ class DataProcessor:
                             # Neither Time nor Fraction - skip this row
                             time_val = np.nan
 
-                        if pd.notna(ph_val) and pd.notna(cumulative_release) and pd.notna(time_val):
+                        # Validate values are in reasonable ranges
+                        # pH should be 1-14, Time should be 0.01-100, Release should be >= 0
+                        ph_valid = pd.notna(ph_val) and 1 <= ph_val <= 14
+                        time_valid = pd.notna(time_val) and 0.01 <= time_val <= 100
+                        release_valid = pd.notna(cumulative_release) and cumulative_release >= 0
+                        
+                        # Additional check: if pH looks like it might be Time (very small values) or Time looks like pH (very large values)
+                        # This helps catch swapped columns
+                        if ph_valid and time_valid and release_valid:
+                            # Check for swapped values (pH < 3 or Time > 50 might indicate swap)
+                            # But allow legitimate low pH values
+                            if ph_val < 3 and time_val > 10:
+                                # Possible swap: pH too low, Time too high
+                                # Try swapping them
+                                if 1 <= time_val <= 14 and 0.01 <= ph_val <= 100:
+                                    # Values are in valid ranges when swapped - likely a swap
+                                    ph_val, time_val = time_val, ph_val
+                            
                             consolidated_data.append({
                                 'Material': material_name,
                                 'Material_Condition': current_material_condition,
