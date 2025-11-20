@@ -18,7 +18,9 @@ if src_path not in sys.path:
 from flask import Flask, render_template_string, request, jsonify
 import pandas as pd
 import numpy as np
+import yaml
 from src.model_serializer import ModelSerializer
+from src.utils import load_config
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -30,6 +32,20 @@ power_transformer = None
 scaler = None
 feature_columns = None
 model_metadata = None
+
+# Load regulatory thresholds
+def load_thresholds():
+    """Load regulatory thresholds from config file."""
+    try:
+        thresholds_path = os.path.join(os.path.dirname(__file__), 'config', 'regulatory_thresholds.yaml')
+        with open(thresholds_path, 'r') as f:
+            thresholds_data = yaml.safe_load(f)
+        return thresholds_data.get('thresholds', {})
+    except Exception as e:
+        print(f"Warning: Could not load thresholds: {e}")
+        return {}
+
+REGULATORY_THRESHOLDS = load_thresholds()
 
 def load_model():
     """Load the trained model and its components."""
@@ -233,6 +249,29 @@ HTML_TEMPLATE = """
             border-radius: 5px;
             margin-top: 20px;
         }
+        .warning {
+            background-color: #f39c12;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border-left: 4px solid #d68910;
+        }
+        .threshold-info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f8f5;
+            border-radius: 5px;
+            border-left: 4px solid #1abc9c;
+        }
+        .threshold-pass {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .threshold-fail {
+            color: #e74c3c;
+            font-weight: bold;
+        }
         .info {
             background-color: #3498db;
             color: white;
@@ -325,12 +364,39 @@ HTML_TEMPLATE = """
             <button type="submit" class="submit-btn">Predict Leaching</button>
         </form>
         
+        {% if warning %}
+        <div class="warning">
+            <strong>⚠️ Warning:</strong> {{ warning }}
+        </div>
+        {% endif %}
+        
         {% if prediction %}
         <div class="result">
             <h3>Prediction Result</h3>
             <div class="prediction">{{ prediction }} mg/m²</div>
             <p><strong>Input Summary:</strong> {{ request.form.material }} at pH {{ request.form.ph }} for {{ request.form.time_days }} days</p>
             <p><strong>Conditions:</strong> {{ request.form.cement_type }}, {{ request.form.form_type }}, {{ request.form.stat_measure }}</p>
+            
+            {% if threshold_info %}
+            <div class="threshold-info">
+                <h4>Regulatory Compliance (NEN 7375 at 64 days)</h4>
+                <p><strong>Threshold:</strong> {{ threshold_info.threshold }} mg/m²</p>
+                <p><strong>Status:</strong> 
+                    {% if threshold_info.passes %}
+                    <span class="threshold-pass">✅ PASS</span> (Prediction is below threshold)
+                    {% else %}
+                    <span class="threshold-fail">❌ FAIL</span> (Prediction exceeds threshold)
+                    {% endif %}
+                </p>
+                <p><strong>Margin:</strong> {{ "%.2f"|format(threshold_info.margin) }} mg/m² 
+                    {% if threshold_info.passes %}
+                    below threshold
+                    {% else %}
+                    above threshold
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
         
@@ -362,6 +428,8 @@ def home():
     """Main route for the web application."""
     prediction = None
     error = None
+    warning = None
+    threshold_info = None
     
     if request.method == "POST" and model is not None:
         try:
@@ -378,13 +446,31 @@ def home():
                 error = "pH must be between 1 and 14"
             elif not (0.01 <= time_days <= 100):
                 error = "Time must be between 0.01 and 100 days"
+            elif time_days > 64:
+                # Allow but warn - this is extrapolation beyond training data
+                pass
             elif not all([material, cement_type, form_type, stat_measure]):
                 error = "All fields are required"
             else:
+                # Check for time warning
+                if time_days > 64:
+                    warning = f"Warning: Prediction beyond 64 days (training data limit). Results may be less reliable as this is extrapolation beyond the test duration."
+                
                 # Make prediction
                 prediction = predict_leaching(material, ph, time_days, cement_type, form_type, stat_measure)
                 if prediction is None:
                     error = "Prediction failed. Please check your inputs."
+                else:
+                    # Check regulatory threshold (only at exactly 64 days per NEN 7375 standard)
+                    if time_days == 64 and material in REGULATORY_THRESHOLDS:
+                        threshold = REGULATORY_THRESHOLDS.get(material)
+                        if threshold:
+                            threshold_info = {
+                                'threshold': threshold,
+                                'prediction': prediction,
+                                'passes': prediction <= threshold,
+                                'margin': abs(prediction - threshold)
+                            }
                     
         except ValueError as e:
             error = "Invalid input values. Please check your inputs."
@@ -396,7 +482,10 @@ def home():
         model_loaded=model is not None,
         model_metadata=model_metadata or {},
         prediction=prediction,
-        error=error
+        error=error,
+        warning=warning,
+        threshold_info=threshold_info,
+        time_days=request.form.get("time_days", "") if request.method == "POST" else ""
     )
 
 @app.route("/api/predict", methods=["POST"])
@@ -423,11 +512,34 @@ def api_predict():
         if prediction is None:
             return jsonify({"error": "Prediction failed"}), 500
         
-        return jsonify({
+        # Check for time warning
+        warning = None
+        if data["time_days"] > 64:
+            warning = "Prediction beyond 64 days (training data limit). Results may be less reliable."
+        
+        # Check regulatory threshold
+        threshold_info = None
+        if data["time_days"] == 64 and data["material"] in REGULATORY_THRESHOLDS:
+            threshold = REGULATORY_THRESHOLDS.get(data["material"])
+            if threshold:
+                threshold_info = {
+                    "threshold": float(threshold),
+                    "passes": prediction <= threshold,
+                    "margin": float(abs(prediction - threshold))
+                }
+        
+        response = {
             "prediction": float(prediction),
             "unit": "mg/m²",
             "input": data
-        })
+        }
+        
+        if warning:
+            response["warning"] = warning
+        if threshold_info:
+            response["regulatory_compliance"] = threshold_info
+        
+        return jsonify(response)
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

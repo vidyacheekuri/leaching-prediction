@@ -1,0 +1,36 @@
+# Dutch Standard NEN 7375 Leaching Thresholds
+# Thresholds for monolithic materials at 64 days (mg/m²)
+
+thresholds:
+  # Metals
+  Sb: 8.7      # Antimony
+  As: 260      # Arsenic
+  Ba: 1500     # Barium
+  Cd: 3.8      # Cadmium
+  Cr: 120      # Chromium
+  Co: 60       # Cobalt
+  Cu: 98       # Copper
+  Sn: 20       # Tin
+  Hg: 1.4      # Mercury
+  Mo: 1        # Molybdenum
+  Ni: 81       # Nickel
+  Pb: 40       # Lead
+  Se: 4.8      # Selenium
+  V: 110       # Vanadium
+  Zn: 800      # Zinc
+  
+  # Non-metals
+  Br: 670      # Bromides
+  F: 2200      # Fluorides
+  Cl: 110000   # Chlorides
+  SO4: 165000  # Sulfates
+
+# Material name mappings (for materials not directly matching)
+material_mapping:
+  # If material names differ, map them here
+  # Example: "Bromide": "Br"
+
+test_standard: "NEN 7375"
+test_duration_days: 64
+units: "mg/m²"
+
