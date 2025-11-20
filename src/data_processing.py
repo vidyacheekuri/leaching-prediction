@@ -53,8 +53,32 @@ class DataProcessor:
 
             # Check if this is a data header row (contains pH and Cumulative release)
             if 'pH' in row_text and 'Cumulative release' in row_text:
-                # Determine column structure based on whether "Time" is present
-                has_time_column = 'Time' in row_text
+                # Find actual column indices for pH, Time, Fraction, and Cumulative Release
+                ph_col_idx = None
+                time_col_idx = None
+                fraction_col_idx = None
+                release_col_idx = None
+                
+                # Search for column headers
+                for col_idx, cell in enumerate(row):
+                    cell_str = str(cell).lower() if pd.notna(cell) else ''
+                    if 'ph' in cell_str and ph_col_idx is None:
+                        ph_col_idx = col_idx
+                    if 'time' in cell_str and 'day' in cell_str and time_col_idx is None:
+                        time_col_idx = col_idx
+                    if 'fraction' in cell_str and fraction_col_idx is None:
+                        fraction_col_idx = col_idx
+                    if 'cumulative' in cell_str and 'release' in cell_str and release_col_idx is None:
+                        release_col_idx = col_idx
+                
+                # If we found the columns, use them; otherwise fall back to default positions
+                # Default: assume pH, Time, Release in columns 2, 3, 4 (or 3, 4, 5 if Fraction exists)
+                if ph_col_idx is None:
+                    ph_col_idx = 3 if fraction_col_idx is not None else 2
+                if time_col_idx is None:
+                    time_col_idx = 4 if fraction_col_idx is not None else 3
+                if release_col_idx is None:
+                    release_col_idx = 5 if fraction_col_idx is not None else 4
 
                 # Look for data in subsequent rows
                 data_idx = idx + 1
@@ -63,24 +87,27 @@ class DataProcessor:
                     data_row = sheet_df.iloc[data_idx]
 
                     # Stop if we hit another header or empty section
-                    if len(data_row) < 5 or (pd.isna(data_row.iloc[2]) and pd.isna(data_row.iloc[3])):
+                    if len(data_row) < max(ph_col_idx, time_col_idx, release_col_idx) + 1:
+                        break
+                    if pd.isna(data_row.iloc[ph_col_idx]) and pd.isna(data_row.iloc[time_col_idx]):
                         break
 
                     try:
-                        if has_time_column:
-                            # Standard format: pH, Time, Cumulative Release in columns 2, 3, 4
-                            ph_val = pd.to_numeric(data_row.iloc[2], errors='coerce')
-                            time_val = pd.to_numeric(data_row.iloc[3], errors='coerce')
-                            cumulative_release = pd.to_numeric(data_row.iloc[4], errors='coerce')
-                        else:
-                            # Special Bromide format: Fraction, pH, Cumulative Release in columns 2, 3, 4
-                            fraction_val = pd.to_numeric(data_row.iloc[2], errors='coerce')
-                            ph_val = pd.to_numeric(data_row.iloc[3], errors='coerce')
-                            cumulative_release = pd.to_numeric(data_row.iloc[4], errors='coerce')
-
-                            # Map fraction to time values (based on standard leaching test time points)
+                        # Read values from correct column indices
+                        ph_val = pd.to_numeric(data_row.iloc[ph_col_idx], errors='coerce')
+                        cumulative_release = pd.to_numeric(data_row.iloc[release_col_idx], errors='coerce')
+                        
+                        if time_col_idx is not None:
+                            # Time column exists - read it directly
+                            time_val = pd.to_numeric(data_row.iloc[time_col_idx], errors='coerce')
+                        elif fraction_col_idx is not None:
+                            # No Time column, but Fraction exists - map Fraction to Time
+                            fraction_val = pd.to_numeric(data_row.iloc[fraction_col_idx], errors='coerce')
                             time_mapping = {1: 0.08, 2: 1, 3: 2.25, 4: 4, 5: 9, 6: 16, 7: 28, 8: 36, 9: 64}
                             time_val = time_mapping.get(fraction_val, np.nan)
+                        else:
+                            # Neither Time nor Fraction - skip this row
+                            time_val = np.nan
 
                         if pd.notna(ph_val) and pd.notna(cumulative_release) and pd.notna(time_val):
                             consolidated_data.append({
@@ -90,7 +117,8 @@ class DataProcessor:
                                 'Time_days': time_val,
                                 'Cumulative_Release_mg_m2': cumulative_release
                             })
-                    except:
+                    except Exception as e:
+                        # Skip rows with errors but don't fail completely
                         pass
 
                     data_idx += 1
