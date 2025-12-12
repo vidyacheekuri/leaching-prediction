@@ -110,10 +110,15 @@ class DataProcessor:
                             time_val = np.nan
 
                         # Validate values are in reasonable ranges
-                        # pH should be 1-14, Time should be 0.01-100, Release should be >= 0
+                        # pH should be 1-14, Time should be 0.01-64 (tests only go up to 64 days), Release should be >= 0
                         ph_valid = pd.notna(ph_val) and 1 <= ph_val <= 14
                         time_valid = pd.notna(time_val) and 0.01 <= time_val <= 100
                         release_valid = pd.notna(cumulative_release) and cumulative_release >= 0
+                        
+                        # Cap time at 64 days (as per professor's requirement - tests only go up to 64 days)
+                        if time_valid and time_val > 64:
+                            print(f"⚠️  Capping time from {time_val:.2f} to 64.0 days for {material_name} row {data_idx}")
+                            time_val = 64.0
                         
                         # Check for clearly swapped values (very conservative)
                         # Only swap if pH is clearly a time value (< 1 day) AND time is clearly a pH value (10-14)
@@ -124,6 +129,11 @@ class DataProcessor:
                                 # These are clearly swapped
                                 ph_val, time_val = time_val, ph_val
                                 print(f"⚠️  Swapped pH/Time for {material_name} row {data_idx}: pH was {time_val:.2f}, Time was {ph_val:.2f}")
+                        
+                        # Final validation after corrections
+                        ph_valid = pd.notna(ph_val) and 1 <= ph_val <= 14
+                        time_valid = pd.notna(time_val) and 0.01 <= time_val <= 64
+                        release_valid = pd.notna(cumulative_release) and cumulative_release >= 0
                         
                         if ph_valid and time_valid and release_valid:
                             consolidated_data.append({
@@ -144,6 +154,7 @@ class DataProcessor:
     def clean_material_condition(self, condition_str: str) -> Tuple[str, str, str]:
         """
         Clean and extract features from material condition strings.
+        Extracts detailed cement types based on sample codes and descriptions.
         
         Args:
             condition_str: Raw material condition string
@@ -156,16 +167,75 @@ class DataProcessor:
 
         condition_str = str(condition_str).strip()
 
-        # Extract cement type
+        # Extract detailed cement type based on sample codes and descriptions
+        # Sample code mapping from professor's requirements
+        sample_code = None
+        for code in ['N1', 'H6', 'H9', 'H1', 'H3', 'D1', 'D2', 'H7', 'N2', 'H5']:
+            if f' {code} ' in condition_str or condition_str.endswith(code):
+                sample_code = code
+                break
+        
         cement_type = 'Unknown'
+        
+        # CEM I - Portland cement (almost pure clinker)
         if 'CEM I' in condition_str and 'CEM II' not in condition_str:
-            cement_type = 'CEM_I'
+            if sample_code in ['N1', 'H6', 'H9']:
+                # CEM I, Portland cement, "Almost pure Portland clinker (+ gypsum)"
+                cement_type = 'CEM_I_Portland'
+            elif sample_code in ['H1', 'H3', 'D1', 'D2', 'H7', 'N2']:
+                # CEM I, Portland cement filler, "Almost pure Portland clinker (+ gypsum + <6% limestone filler)"
+                cement_type = 'CEM_I_Portland_Filler'
+            else:
+                cement_type = 'CEM_I'
+        
+        # CEM II - Various types
         elif 'CEM II' in condition_str and 'CEM III' not in condition_str:
-            cement_type = 'CEM_II'
+            if 'CEM II/A-L' in condition_str or sample_code == 'H5':
+                # CEM II/A-L, Portland limestone cement
+                cement_type = 'CEM_II_A_L'
+            elif 'CEM II/B-L' in condition_str:
+                # CEM II/B-L, Portland limestone cement
+                cement_type = 'CEM_II_B_L'
+            elif 'CEM II/A-V' in condition_str:
+                # CEM II/A-V, Portland fly ash cement
+                cement_type = 'CEM_II_A_V'
+            elif 'CEM II/B-Q' in condition_str:
+                # CEM II/B-Q, Portland pozzolanic cement
+                cement_type = 'CEM_II_B_Q'
+            elif 'CEM II/B-S' in condition_str:
+                # CEM II/B-S, Portland-slag cement
+                cement_type = 'CEM_II_B_S'
+            elif 'CEM II/B-V' in condition_str:
+                # CEM II/B-V, Portland fly ash cement
+                cement_type = 'CEM_II_B_V'
+            elif 'CEM II/B-M' in condition_str:
+                # CEM II/B-M, Portland composite cement
+                cement_type = 'CEM_II_B_M'
+            elif 'CEM II/A-S' in condition_str:
+                # CEM II/A-S, Portland-slag cement
+                cement_type = 'CEM_II_A_S'
+            elif 'CEM II/A' in condition_str:
+                cement_type = 'CEM_II_A'
+            elif 'CEM II/B' in condition_str:
+                cement_type = 'CEM_II_B'
+            else:
+                cement_type = 'CEM_II'
+        
+        # CEM III - Blastfurnace cement
         elif 'CEM III' in condition_str:
-            cement_type = 'CEM_III'
+            if 'CEM III/B' in condition_str:
+                # CEM III/B, Blastfurnace cement
+                cement_type = 'CEM_III_B'
+            else:
+                cement_type = 'CEM_III'
+        
+        # CEM V - Composite cement
         elif 'CEM V' in condition_str:
-            cement_type = 'CEM_V'
+            if 'CEM V/A' in condition_str:
+                # CEM V/A, Composite cement
+                cement_type = 'CEM_V_A'
+            else:
+                cement_type = 'CEM_V'
 
         # Extract form type
         form_type = 'Unknown'

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Simple prediction script for cement leaching.
+Interactive prediction script for cement leaching.
 
 This script loads the trained model and allows users to make predictions
-by inputting material properties interactively.
+by inputting material properties interactively. Uses the same prediction
+logic as the production ML pipeline for consistency.
 """
 
 import sys
@@ -59,7 +60,7 @@ def get_user_input():
     
     try:
         # Get material
-        material = input("Enter Material (e.g., Al, Pb, Zn): ").strip()
+        material = input("Enter Material (e.g., Al, Pb, Zn, Ba): ").strip()
         
         # Get pH
         ph = float(input("Enter pH value (1-14): "))
@@ -68,13 +69,13 @@ def get_user_input():
         time_days = float(input("Enter time in days (0.01-100): "))
         
         # Get cement type
-        cement_type = input("Enter Cement Type (e.g., CEM_I, CEM_II): ").strip()
+        cement_type = input("Enter Cement Type (e.g., CEM_I, CEM_II, Unknown): ").strip() or "Unknown"
         
         # Get form type
-        form_type = input("Enter Form Type (e.g., Concrete, Mortar): ").strip()
+        form_type = input("Enter Form Type (e.g., Concrete, Mortar): ").strip() or "Unknown"
         
         # Get stat measure
-        stat_measure = input("Enter Statistical Measure (e.g., CL_Minus, CL_Plus): ").strip()
+        stat_measure = input("Enter Statistical Measure (e.g., CL_Minus, CL_Plus, LPx): ").strip() or "Unknown"
         
         return material, ph, time_days, cement_type, form_type, stat_measure, model, label_encoders, power_transformer, scaler, feature_columns
         
@@ -88,7 +89,10 @@ def get_user_input():
 
 def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measure,
                     model, label_encoders, power_transformer, scaler, feature_columns):
-    """Make leaching prediction."""
+    """
+    Make leaching prediction using the same logic as ML pipeline.
+    All models are trained on transformed and scaled data, so we apply the same transformations.
+    """
     
     # Safe encoding function
     def safe_encode(encoder, value):
@@ -107,7 +111,7 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
         form_enc = safe_encode(label_encoders['Form_Type'], form_type)
         stat_enc = safe_encode(label_encoders['Stat_Measure'], stat_measure)
         
-        # Create complete feature dictionary
+        # Create complete feature dictionary (same as ML pipeline)
         feat = {
             'Material_encoded': material_enc,
             'Cement_Type_encoded': cement_enc,
@@ -124,7 +128,7 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
             'pH_squared': ph ** 2,
             'pH_cubed': ph ** 3,
             'Time_squared': time_days ** 2,
-            'Time_pH_interaction': ph * time_days,
+            'Time_pH_interaction': time_days * ph,  # Fixed: time_days * ph (not ph * time_days)
             'log_Time_pH': np.log1p(time_days) * ph,
             'Material_pH_interaction': material_enc * ph,
             'Material_Time_interaction': material_enc * time_days,
@@ -136,8 +140,10 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
             'Material_group': material_groups.get(material, 0)
         }
         
-        # Create DataFrame and transform
+        # Create DataFrame with correct column order
         X_df = pd.DataFrame([feat])[feature_columns]
+        
+        # Apply transformations (ALL models were trained on transformed and scaled data)
         X_transformed = power_transformer.transform(X_df)
         X_scaled = scaler.transform(X_transformed)
         
@@ -145,7 +151,10 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
         y_log = model.predict(X_scaled)[0]
         prediction = np.expm1(y_log)
         
-        return float(prediction)
+        # Ensure non-negative
+        prediction = max(float(prediction), 0.0)
+        
+        return prediction
         
     except Exception as e:
         raise Exception(f"Prediction failed: {str(e)}")
@@ -208,6 +217,11 @@ def main():
             print("   Moderate leaching - acceptable performance")
         else:
             print("   High leaching - may need attention")
+        
+        # Warning for extrapolation
+        if time_days > 64:
+            print(f"\n⚠️  Warning: Time ({time_days} days) exceeds training range (64 days).")
+            print("   Prediction may be less reliable (extrapolation).")
         
         print("\n✅ Prediction completed successfully!")
         

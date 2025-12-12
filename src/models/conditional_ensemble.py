@@ -35,7 +35,7 @@ class ConditionalEnsemble:
         self.transformers = {}
         self.feature_columns = None
         self.label_encoders = None
-        self.problematic_materials = ['Al', 'Br']  # Materials with high errors
+        self.problematic_materials = ['Al', 'Br', 'Cd']  # Materials with high errors
         
     def train_specialized_models(self, df: pd.DataFrame, feature_columns: List[str],
                                 label_encoders: Dict) -> Dict[str, Any]:

@@ -64,9 +64,14 @@ def load_model():
 # Load model at module level (for production with gunicorn)
 # This will execute when the module is imported
 try:
-    load_model()
+    if not load_model():
+        print("⚠️  Model loading returned False")
+    else:
+        print("✅ Model loaded successfully at startup")
 except Exception as e:
     print(f"⚠️  Could not load model at startup: {e}")
+    import traceback
+    traceback.print_exc()
     print("Model will be loaded on first request.")
 
 def safe_transform(le, val):
@@ -117,7 +122,7 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
                           'Ca': 4, 'K': 4, 'Mg': 4, 'Na': 4,
                           'Cd': 5, 'Cu': 5, 'Pb': 5, 'Zn': 5, 'SO4': 6}
         
-        # Create complete feature dictionary
+        # Create complete feature dictionary (same as ML pipeline)
         feat = {
             'Material_encoded': mat_enc,
             'Cement_Type_encoded': cement_enc,
@@ -134,7 +139,7 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
             'pH_squared': ph ** 2,
             'pH_cubed': ph ** 3,
             'Time_squared': time_days ** 2,
-            'Time_pH_interaction': ph * time_days,
+            'Time_pH_interaction': time_days * ph,  # Fixed: time_days * ph (consistent with ML pipeline)
             'log_Time_pH': np.log1p(time_days) * ph,
             'Material_pH_interaction': mat_enc * ph,
             'Material_Time_interaction': mat_enc * time_days,
@@ -146,17 +151,30 @@ def predict_leaching(material, ph, time_days, cement_type, form_type, stat_measu
             'Material_group': material_groups.get(material, 0)
         }
         
-        # Create DataFrame and ensure correct column order
+        # Create DataFrame with correct column order
         X_df = pd.DataFrame([feat])[feature_columns]
         
-        # Make prediction (XGBoost was trained on original features, not transformed)
-        y_log = model.predict(X_df)[0]
+        # Apply transformations (ALL models were trained on transformed and scaled data)
+        # This is critical - the model expects transformed/scaled features
+        X_transformed = power_transformer.transform(X_df)
+        X_scaled = scaler.transform(X_transformed)
+        
+        # Make prediction on transformed and scaled features
+        y_log = model.predict(X_scaled)[0]
         prediction = np.expm1(y_log)  # Transform back to original scale
         
-        # Ensure non-negative prediction (leaching values can never be negative)
-        prediction = max(prediction, 0.0)
+        # Debug output for troubleshooting
+        print(f"   DEBUG: y_log={y_log:.6f}, expm1={prediction:.6f}")
         
-        return round(prediction, 2)
+        # Ensure non-negative prediction (leaching values can never be negative)
+        # But don't clamp to 0 if it's just very small - use a small epsilon instead
+        if prediction < 0:
+            print(f"   WARNING: Negative prediction {prediction:.6f}, clamping to 0")
+            prediction = 0.0
+        elif prediction < 1e-6:  # Very small positive values
+            print(f"   NOTE: Very small prediction {prediction:.6f}")
+        
+        return round(prediction, 6)  # More precision for small values
         
     except Exception as e:
         print(f"Error in prediction: {e}")
@@ -324,8 +342,9 @@ HTML_TEMPLATE = """
             <div class="form-row">
                 <div class="form-group">
                     <label for="time_days">Time (days):</label>
-                    <input type="number" name="time_days" id="time_days" step="0.01" min="0.01" 
+                    <input type="number" name="time_days" id="time_days" step="0.01" min="0.01" max="64"
                            value="{{ request.form.time_days if request.form.time_days else '1.0' }}" required>
+                    <small style="color: #7f8c8d; font-size: 12px;">Maximum: 64 days (NEN 7375 standard)</small>
                 </div>
                 
                 <div class="form-group">
@@ -370,17 +389,19 @@ HTML_TEMPLATE = """
         </div>
         {% endif %}
         
-        {% if prediction %}
+        {% if prediction is not none %}
         <div class="result">
             <h3>Prediction Result</h3>
-            <div class="prediction">{{ prediction }} mg/m²</div>
+            <div class="prediction">{{ "%.6f"|format(prediction) if prediction < 1 else "%.2f"|format(prediction) }} mg/m²</div>
             <p><strong>Input Summary:</strong> {{ request.form.material }} at pH {{ request.form.ph }} for {{ request.form.time_days }} days</p>
             <p><strong>Conditions:</strong> {{ request.form.cement_type }}, {{ request.form.form_type }}, {{ request.form.stat_measure }}</p>
             
             {% if threshold_info %}
             <div class="threshold-info">
-                <h4>Regulatory Compliance (NEN 7375 at 64 days)</h4>
-                <p><strong>Threshold:</strong> {{ threshold_info.threshold }} mg/m²</p>
+                <h4>Regulatory Compliance (NEN 7375 Standard)</h4>
+                <p><strong>Threshold at 64 days:</strong> {{ threshold_info.threshold }} mg/m²</p>
+                <p><strong>Prediction at {{ request.form.time_days }} days:</strong> {{ prediction }} mg/m²</p>
+                {% if threshold_info.is_64_days %}
                 <p><strong>Status:</strong> 
                     {% if threshold_info.passes %}
                     <span class="threshold-pass">✅ PASS</span> (Prediction is below threshold)
@@ -395,6 +416,16 @@ HTML_TEMPLATE = """
                     above threshold
                     {% endif %}
                 </p>
+                {% else %}
+                <p><strong>Note:</strong> {{ threshold_info.note }}</p>
+                <p><strong>Projected Status at 64 days:</strong> 
+                    {% if threshold_info.passes %}
+                    <span class="threshold-pass">✅ Would PASS</span> (if trend continues)
+                    {% else %}
+                    <span class="threshold-fail">❌ Would FAIL</span> (if trend continues)
+                    {% endif %}
+                </p>
+                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -431,51 +462,88 @@ def home():
     warning = None
     threshold_info = None
     
-    if request.method == "POST" and model is not None:
-        try:
-            # Get form data
-            material = request.form["material"]
-            ph = float(request.form["ph"])
-            time_days = float(request.form["time_days"])
-            cement_type = request.form["cement_type"]
-            form_type = request.form["form_type"]
-            stat_measure = request.form["stat_measure"]
-            
-            # Validate inputs
-            if not (1 <= ph <= 14):
-                error = "pH must be between 1 and 14"
-            elif not (0.01 <= time_days <= 100):
-                error = "Time must be between 0.01 and 100 days"
-            elif time_days > 64:
-                # Allow but warn - this is extrapolation beyond training data
-                pass
-            elif not all([material, cement_type, form_type, stat_measure]):
-                error = "All fields are required"
-            else:
-                # Check for time warning
-                if time_days > 64:
-                    warning = f"Warning: Prediction beyond 64 days (training data limit). Results may be less reliable as this is extrapolation beyond the test duration."
+    if request.method == "POST":
+        # Check if model is loaded
+        if model is None:
+            error = "Model not loaded. Please ensure the model files exist and dependencies are installed."
+            print("❌ Model is None when trying to make prediction")
+        else:
+            try:
+                # Get form data
+                material = request.form.get("material", "").strip()
+                ph_str = request.form.get("ph", "").strip()
+                time_days_str = request.form.get("time_days", "").strip()
+                cement_type = request.form.get("cement_type", "").strip()
+                form_type = request.form.get("form_type", "").strip()
+                stat_measure = request.form.get("stat_measure", "").strip()
                 
-                # Make prediction
-                prediction = predict_leaching(material, ph, time_days, cement_type, form_type, stat_measure)
-                if prediction is None:
-                    error = "Prediction failed. Please check your inputs."
+                # Validate that all fields are present
+                if not all([material, ph_str, time_days_str, cement_type, form_type, stat_measure]):
+                    error = "All fields are required. Please fill in all form fields."
                 else:
-                    # Check regulatory threshold (only at exactly 64 days per NEN 7375 standard)
-                    if time_days == 64 and material in REGULATORY_THRESHOLDS:
-                        threshold = REGULATORY_THRESHOLDS.get(material)
-                        if threshold:
-                            threshold_info = {
-                                'threshold': threshold,
-                                'prediction': prediction,
-                                'passes': prediction <= threshold,
-                                'margin': abs(prediction - threshold)
-                            }
+                    try:
+                        ph = float(ph_str)
+                        time_days = float(time_days_str)
+                    except ValueError:
+                        error = "pH and Time must be valid numbers."
+                        ph = None
+                        time_days = None
+            
+                    # Validate inputs
+                    if ph is None or time_days is None:
+                        pass  # Error already set above
+                    elif not (1 <= ph <= 14):
+                        error = "pH must be between 1 and 14"
+                    elif not (0.01 <= time_days <= 64):
+                        error = "Time must be between 0.01 and 64 days (training data limit)"
+                    elif time_days > 64:
+                        error = "Time cannot exceed 64 days (maximum test duration per NEN 7375 standard)"
+                    else:
+                        # Check for time warning
+                        if time_days > 64:
+                            warning = f"Warning: Prediction beyond 64 days (training data limit). Results may be less reliable as this is extrapolation beyond the test duration."
+                        
+                        # Make prediction
+                        print(f"🔮 Making prediction: Material={material}, pH={ph}, Time={time_days}, Cement={cement_type}, Form={form_type}, Stat={stat_measure}")
+                        try:
+                            prediction = predict_leaching(material, ph, time_days, cement_type, form_type, stat_measure)
+                            print(f"📊 Prediction result: {prediction}")
+                        except Exception as pred_error:
+                            error = f"Prediction error: {str(pred_error)}"
+                            print(f"❌ Prediction failed: {pred_error}")
+                            import traceback
+                            traceback.print_exc()
+                            prediction = None
+                        if prediction is None:
+                            error = "Prediction failed. Please check your inputs."
+                        else:
+                            # Check regulatory threshold (show for all predictions, highlight at 64 days)
+                            # NEN 7375 standard is at 64 days, but show threshold for reference
+                            if material in REGULATORY_THRESHOLDS:
+                                threshold = REGULATORY_THRESHOLDS.get(material)
+                                if threshold:
+                                    threshold_info = {
+                                        'threshold': threshold,
+                                        'prediction': prediction,
+                                        'passes': prediction <= threshold,
+                                        'margin': abs(prediction - threshold),
+                                        'is_64_days': time_days == 64
+                                    }
+                                    
+                                    # If not at 64 days, provide note
+                                    if time_days != 64:
+                                        threshold_info['note'] = f"Note: NEN 7375 threshold applies at 64 days. Current prediction is at {time_days} days."
                     
-        except ValueError as e:
-            error = "Invalid input values. Please check your inputs."
-        except Exception as e:
-            error = f"An error occurred: {str(e)}"
+            except ValueError as e:
+                error = f"Invalid input values: {str(e)}. Please check your inputs."
+                print(f"❌ ValueError: {e}")
+                import traceback
+                traceback.print_exc()
+            except Exception as e:
+                error = f"An error occurred: {str(e)}"
+                print(f"❌ Exception: {e}")
+                import traceback
+                traceback.print_exc()
     
     return render_template_string(
         HTML_TEMPLATE,

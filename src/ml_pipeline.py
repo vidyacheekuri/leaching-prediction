@@ -110,21 +110,24 @@ class MLPipeline:
         # Define optimized models
         self.models = {
             'XGBoost': xgb.XGBRegressor(
-                n_estimators=400,
-                max_depth=8,
-                learning_rate=0.05,
-                subsample=0.8,
-                colsample_bytree=0.8,
+                n_estimators=500,
+                max_depth=10,
+                learning_rate=0.03,
+                subsample=0.85,
+                colsample_bytree=0.85,
+                min_child_weight=3,
+                gamma=0.1,
                 random_state=self.random_state,
                 n_jobs=-1,
                 verbosity=0
             ),
             'LightGBM': lgb.LGBMRegressor(
-                n_estimators=400,
-                max_depth=8,
-                learning_rate=0.05,
-                subsample=0.8,
-                colsample_bytree=0.8,
+                n_estimators=500,
+                max_depth=10,
+                learning_rate=0.03,
+                subsample=0.85,
+                colsample_bytree=0.85,
+                min_child_samples=20,
                 random_state=self.random_state,
                 n_jobs=-1,
                 verbose=-1
@@ -146,10 +149,12 @@ class MLPipeline:
                 n_jobs=-1
             ),
             'Gradient Boosting': GradientBoostingRegressor(
-                n_estimators=300,
-                max_depth=8,
-                learning_rate=0.05,
-                subsample=0.8,
+                n_estimators=400,
+                max_depth=10,
+                learning_rate=0.03,
+                subsample=0.85,
+                min_samples_split=10,
+                min_samples_leaf=5,
                 random_state=self.random_state
             ),
             'Neural Network': MLPRegressor(
